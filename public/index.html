@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6G-RAN Silicon Hierarchy: Die-Level Visualizer</title>
+    <style>
+        :root {
+            --bg-cad: #050507;
+            --die-base: #121216;
+            --border-cad: #2a2a32;
+            --text-cad: #8a8a95;
+            --accent-ru: #fbbf24; /* Gold/Analog */
+            --accent-du: #38bdf8; /* Blue/Compute */
+            --accent-cu: #a855f7; /* Purple/AI */
+            --accent-io: #22c55e; /* Green/IO */
+            --trace: #1c1c22;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-cad);
+            color: var(--text-cad);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 15px 25px;
+            background: #000;
+            border-bottom: 2px solid var(--border-cad);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #111;
+            padding: 5px;
+            gap: 5px;
+            border-bottom: 1px solid var(--border-cad);
+        }
+
+        .tab {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            font-size: 11px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .tab:hover { background: #1a1a20; }
+        .tab.active {
+            border-color: var(--border-cad);
+            background: #222;
+            color: #fff;
+        }
+
+        .main-view {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .die-canvas {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image: radial-gradient(circle at center, #111, #000);
+            cursor: crosshair;
+        }
+
+        .inspector {
+            width: 350px;
+            border-left: 2px solid var(--border-cad);
+            background: #08080a;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            font-size: 11px;
+            overflow-y: auto;
+        }
+
+        svg {
+            width: 90%;
+            height: 90%;
+            max-width: 900px;
+            background: #000;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        /* Die elements */
+        .die-rect   { fill: var(--die-base); stroke: #333; stroke-width: 1; }
+        .block-rect { fill: #0a0a0c; stroke: #222; stroke-width: 1; transition: all 0.3s; cursor: pointer; }
+        .block-rect:hover { stroke: #555; fill: #111; }
+        .block-rect.selected { filter: brightness(2); }
+        .io-bump  { fill: #111; stroke: #333; stroke-width: 0.5; }
+        .mesh-line { stroke: #18181b; stroke-width: 0.3; fill: none; }
+        .label { font-size: 9px; fill: #444; pointer-events: none; text-transform: uppercase; }
+        .active-label { fill: #fff !important; }
+
+        .spec-row, .sim-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #1a1a1e;
+        }
+        .spec-val { color: #fff; font-weight: bold; }
+        .sim-val  { color: #fbbf24; font-weight: bold; }
+
+        #coord-panel {
+            position: absolute;
+            bottom: 15px;
+            left: 20px;
+            font-size: 10px;
+            color: #444;
+        }
+
+        .chip-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .pulse { animation: pulse-anim 2s infinite; }
+        @keyframes pulse-anim {
+            0%   { opacity: 0.3; }
+            50%  { opacity: 0.7; }
+            100% { opacity: 0.3; }
+        }
+
+        /* Simulation panel */
+        #sim-panel { border-top: 1px solid #222; padding-top: 15px; }
+        #sim-panel-header {
+            color: #444;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #sim-results { min-height: 40px; }
+        #sim-btn {
+            margin-top: 10px;
+            background: #111;
+            border: 1px solid #333;
+            color: #666;
+            padding: 7px 12px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            width: 100%;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+        }
+        #sim-btn:hover { background: #1a1a20; color: #aaa; border-color: #555; }
+        #sim-btn:disabled { cursor: not-allowed; color: #333; }
+    </style>
+</head>
+<body onmousemove="updateCoords(event)">
+
+<header>
+    <div style="font-weight: bold; color: #fff;">6G_FABRICATION_GALLERY v1.0</div>
+    <div id="clock">SYS_TIME: --</div>
+</header>
+
+<div class="nav-tabs">
+    <div class="tab active" onclick="switchChip('ru', event)">Radio Unit (RU) SoC</div>
+    <div class="tab" onclick="switchChip('du', event)">Distributed Unit (DU)</div>
+    <div class="tab" onclick="switchChip('cu', event)">Central Unit (CU/AI)</div>
+    <div class="tab" onclick="switchChip('io', event)">Transport/Fronthaul</div>
+</div>
+
+<div class="main-view">
+    <div class="die-canvas" id="viewport">
+        <div id="coord-panel">DIE_X: 0.00 | DIE_Y: 0.00</div>
+        <svg viewBox="0 0 1000 800" id="chip-svg">
+            <defs>
+                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0f0f12" stroke-width="0.5"/>
+                </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+            <g id="chip-layer"></g>
+        </svg>
+    </div>
+
+    <div class="inspector" id="inspector">
+        <!-- Chip metadata -->
+        <div id="chip-meta">
+            <div id="chip-type-tag" class="chip-tag" style="background: var(--accent-ru); color: #000;">RADIO_PHY</div>
+            <h2 id="chip-name" style="margin: 0; color: #fff; font-size: 18px;">Loading…</h2>
+            <p id="chip-desc" style="color: #666; line-height: 1.4; margin: 10px 0;"></p>
+        </div>
+
+        <!-- Lithography / spec table -->
+        <div style="border-top: 1px solid #222; padding-top: 15px;">
+            <div style="color: #444; margin-bottom: 10px;">LITHOGRAPHY_STATS</div>
+            <div id="spec-list"></div>
+        </div>
+
+        <!-- WASM circuit simulation panel -->
+        <div id="sim-panel">
+            <div id="sim-panel-header">
+                <span>CIRCUIT_SIMULATION</span>
+                <span id="wasm-status" style="color:#333; font-size:9px;">⬤ LOADING</span>
+            </div>
+            <div id="sim-results" style="color:#555; font-size:10px;">Click a die block to run simulation</div>
+            <button id="sim-btn" disabled onclick="runSimulation(currentBlockId)">▶ RUN_SIMULATION</button>
+        </div>
+
+        <!-- Status bar -->
+        <div style="margin-top: auto;">
+            <div style="color: #333; font-size: 9px;">CAD_LAYER_VIEW: METAL_12_TOP</div>
+            <div style="height: 4px; background: #111; margin-top: 5px;">
+                <div style="width: 75%; height: 100%; background: #444;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/* ── State ─────────────────────────────────────────────────────────── */
+let chips          = {};      // populated from /api/chips
+let simModule      = null;    // WebAssembly instance exports
+let currentChipKey = 'ru';
+let currentBlockId = null;
+
+/* ── WASM loader ────────────────────────────────────────────────────── */
+async function loadSimWasm() {
+    try {
+        const res    = await fetch('/sim.wasm');
+        const bytes  = await res.arrayBuffer();
+        const result = await WebAssembly.instantiate(bytes, {});
+        simModule    = result.instance.exports;
+        document.getElementById('wasm-status').textContent  = '⬤ READY';
+        document.getElementById('wasm-status').style.color  = '#22c55e';
+        document.getElementById('sim-btn').disabled = false;
+    } catch (e) {
+        document.getElementById('wasm-status').textContent = '⬤ ERROR';
+        document.getElementById('wasm-status').style.color = '#ef4444';
+        console.error('WASM load error:', e);
+    }
+}
+
+/* ── Simulation parameters per chip → block ─────────────────────────
+ * blockType: 1=AFE  2=digital logic  3=IO/SerDes  4=compute  5=fabric
+ * area: mm²   freqGhz / vdd / activeFactor: process-typical values
+ */
+const simParams = {
+    ru: {
+        afe_l:  { label:'ADC_BANK_L',         blockType:1, freqGhz:1.96, vdd:0.85, area:12.0,  activeFactor:0.60,
+                  rf: { numAntennas:64, elemGainDbi:5.0, txPowerDbm:23.0, pathLossDb:98.0, noiseFigDb:7.0, bwGhz:0.4 } },
+        afe_r:  { label:'DAC_BANK_R',         blockType:1, freqGhz:1.96, vdd:0.85, area:11.5,  activeFactor:0.65,
+                  rf: { numAntennas:64, elemGainDbi:5.0, txPowerDbm:23.0, pathLossDb:98.0, noiseFigDb:7.0, bwGhz:0.4 } },
+        logic:  { label:'DFE_LOGIC_CORE',     blockType:2, freqGhz:5.0,  vdd:0.75, area:55.0,  activeFactor:0.45 },
+        neural: { label:'NEURAL_DPD_CLUSTER', blockType:2, freqGhz:5.0,  vdd:0.75, area:28.0,  activeFactor:0.80 },
+        io:     { label:'JESD204C_INTERFACE', blockType:3, freqGhz:12.8, vdd:0.90, area:22.0,  activeFactor:0.70 }
+    },
+    du: {
+        cores:  { label:'72_CORE_COMPUTE',    blockType:4, freqGhz:3.8,  vdd:0.80, area:280.0, activeFactor:0.55 },
+        amx:    { label:'AMX_ACCELERATORS',   blockType:4, freqGhz:3.8,  vdd:0.80, area:80.0,  activeFactor:0.75 },
+        boost:  { label:'vRAN_BOOST_LDPC',    blockType:2, freqGhz:3.2,  vdd:0.80, area:45.0,  activeFactor:0.90,
+                  ldpc: { codeRate:0.89, parallelism:256 },
+                  fft:  { size:4096, parallelUnits:64 } },
+        mem:    { label:'MEMORY_CONTROLLERS', blockType:3, freqGhz:4.8,  vdd:1.10, area:35.0,  activeFactor:0.50 }
+    },
+    cu: {
+        gpu:    { label:'TURING_AI_MATRIX',   blockType:4, freqGhz:1.98, vdd:0.85, area:460.0, activeFactor:0.70,
+                  ai: { tops:1000.0, precisionFactor:1.0 } },
+        hbm:    { label:'HBM3_STACKS',        blockType:3, freqGhz:6.4,  vdd:1.10, area:80.0,  activeFactor:0.60 },
+        cpu:    { label:'GRACE_ARM_CORES',    blockType:4, freqGhz:3.1,  vdd:0.85, area:55.0,  activeFactor:0.45 }
+    },
+    io: {
+        switch:   { label:'SWITCH_FABRIC_CORE', blockType:5, freqGhz:6.4,  vdd:0.80, area:120.0, activeFactor:0.80 },
+        serdes_l: { label:'PAM4_SERDES_L',      blockType:3, freqGhz:56.0, vdd:0.90, area:40.0,  activeFactor:0.70,
+                    link: { dataRateGbps:800.0, energyPerBitPj:5.0, fabricPorts:512, fabricClkGhz:6.4 } },
+        serdes_r: { label:'PAM4_SERDES_R',      blockType:3, freqGhz:56.0, vdd:0.90, area:40.0,  activeFactor:0.70,
+                    link: { dataRateGbps:800.0, energyPerBitPj:5.0, fabricPorts:512, fabricClkGhz:6.4 } }
+    }
+};
+
+/* ── Run WASM simulation for selected block ─────────────────────────── */
+function runSimulation(blockId) {
+    if (!simModule) {
+        document.getElementById('sim-results').innerHTML =
+            '<div style="color:#ef4444;">WASM_MODULE_NOT_READY</div>';
+        return;
+    }
+    if (!blockId) {
+        document.getElementById('sim-results').innerHTML =
+            '<div style="color:#555;">Click a die block to run simulation</div>';
+        return;
+    }
+
+    const p = simParams[currentChipKey]?.[blockId];
+    if (!p) {
+        document.getElementById('sim-results').innerHTML =
+            '<div style="color:#555;">No simulation params for this block</div>';
+        return;
+    }
+
+    const { blockType, freqGhz, vdd, area, activeFactor } = p;
+
+    /* Core metrics — always computed */
+    const power   = simModule.compute_block_power(blockType, freqGhz, vdd, activeFactor);
+    const density = simModule.compute_power_density(power, area);
+    const thermal = simModule.compute_thermal(power, 15.0, 25.0);   /* 15 °C/W, 25 °C ambient */
+    const sigLoss = simModule.compute_signal_integrity(freqGhz, 5.0);   /* 5 mm trace */
+    const rcDelay = simModule.compute_rc_delay(500.0, 0.08);             /* 500 µm, typical RC */
+
+    /* Block-specific extras — parameters sourced from simParams config */
+    let extra = '';
+
+    if (currentChipKey === 'ru' && p.rf &&
+        (blockId === 'afe_l' || blockId === 'afe_r')) {
+        const { numAntennas, elemGainDbi, txPowerDbm, pathLossDb, noiseFigDb, bwGhz } = p.rf;
+        const bfGain = simModule.compute_beamforming_gain(numAntennas, elemGainDbi);
+        const snr    = simModule.compute_snr(txPowerDbm, pathLossDb, noiseFigDb);
+        const se     = simModule.compute_spectral_efficiency(snr, bwGhz);
+        extra = row('BF_GAIN',   bfGain.toFixed(1) + ' dBi')
+              + row('LINK_SNR',  snr.toFixed(1)    + ' dB')
+              + row('SPEC_EFF',  se.toFixed(3)     + ' Gbps');
+    } else if (currentChipKey === 'du' && blockId === 'boost' && p.ldpc && p.fft) {
+        const ldpc   = simModule.compute_ldpc_throughput(p.ldpc.codeRate, freqGhz, p.ldpc.parallelism);
+        const fftLat = simModule.compute_fft_latency(p.fft.size, freqGhz, p.fft.parallelUnits);
+        extra = row('LDPC_TPUT', ldpc.toFixed(1)  + ' Gbps')
+              + row('FFT_LAT',   fftLat.toFixed(2) + ' ns');
+    } else if (currentChipKey === 'cu' && blockId === 'gpu' && p.ai) {
+        const aiTput = simModule.compute_ai_throughput(p.ai.tops, activeFactor, p.ai.precisionFactor);
+        extra = row('AI_TPUT', aiTput.toFixed(0) + ' TOPS');
+    } else if (currentChipKey === 'io' && p.link &&
+               (blockId === 'serdes_l' || blockId === 'serdes_r')) {
+        const { dataRateGbps, energyPerBitPj, fabricPorts, fabricClkGhz } = p.link;
+        const lnkPwr = simModule.compute_link_power(dataRateGbps, energyPerBitPj);
+        const swLat  = simModule.compute_switching_latency(fabricPorts, fabricClkGhz);
+        extra = row('LINK_PWR',   (lnkPwr / 1000).toFixed(1) + ' W')
+              + row('FABRIC_LAT', swLat.toFixed(1)            + ' ns');
+    }
+
+    document.getElementById('sim-results').innerHTML =
+        `<div style="color:#555;font-size:9px;margin-bottom:6px;">&gt; ${p.label}</div>`
+        + row('BLOCK_POWER', power.toFixed(1)   + ' mW')
+        + row('PWR_DENSITY', density.toFixed(3) + ' mW/mm²')
+        + row('JUNC_TEMP',   thermal.toFixed(1) + ' °C')
+        + row('SIG_LOSS',    sigLoss.toFixed(2) + ' dB')
+        + row('RC_DELAY',    rcDelay.toFixed(0) + ' fs')
+        + extra;
+}
+
+function row(label, val) {
+    return `<div class="sim-row"><span>${label}</span><span class="sim-val">${val}</span></div>`;
+}
+
+/* ── Chip rendering ─────────────────────────────────────────────────── */
+function switchChip(key, evt) {
+    currentChipKey = key;
+    currentBlockId = null;
+    document.getElementById('sim-results').innerHTML =
+        '<div style="color:#555; font-size:10px;">Click a die block to run simulation</div>';
+
+    /* Tab styling */
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
+
+    const chip  = chips[key];
+    if (!chip) return;
+    const layer = document.getElementById('chip-layer');
+    layer.innerHTML = '';
+
+    /* Die outline */
+    const die = svgEl('rect');
+    die.setAttribute('x', '100'); die.setAttribute('y', '50');
+    die.setAttribute('width', '800'); die.setAttribute('height', '700');
+    die.setAttribute('class', 'die-rect');
+    layer.appendChild(die);
+
+    /* IO bump pads */
+    for (let i = 110; i < 890; i += 20) {
+        for (const [y1, y2] of [[52, 740]]) {
+            const padT = svgEl('rect');
+            padT.setAttribute('x', i); padT.setAttribute('y', y1);
+            padT.setAttribute('width', 8); padT.setAttribute('height', 8);
+            padT.setAttribute('class', 'io-bump');
+            layer.appendChild(padT);
+            const padB = svgEl('rect');
+            padB.setAttribute('x', i); padB.setAttribute('y', y2);
+            padB.setAttribute('width', 8); padB.setAttribute('height', 8);
+            padB.setAttribute('class', 'io-bump');
+            layer.appendChild(padB);
+        }
+    }
+
+    /* Functional blocks */
+    chip.layout.forEach(b => {
+        const g    = svgEl('g');
+        const rect = svgEl('rect');
+        rect.setAttribute('x', b.x); rect.setAttribute('y', b.y);
+        rect.setAttribute('width', b.w); rect.setAttribute('height', b.h);
+        rect.setAttribute('class', 'block-rect' + (b.highlight ? ' pulse' : ''));
+        if (b.highlight) rect.style.stroke = chip.tagColor;
+
+        const txt = svgEl('text');
+        txt.setAttribute('x', b.x + b.w / 2);
+        txt.setAttribute('y', b.y + b.h / 2);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('class', 'label' + (b.highlight ? ' active-label' : ''));
+        txt.textContent = b.label;
+
+        g.appendChild(rect);
+        g.appendChild(txt);
+
+        /* Click handler → run simulation */
+        g.addEventListener('click', () => {
+            /* Deselect previous */
+            document.querySelectorAll('#chip-layer .block-rect.selected')
+                    .forEach(r => r.classList.remove('selected'));
+            rect.classList.add('selected');
+            currentBlockId = b.id;
+            runSimulation(b.id);
+        });
+
+        layer.appendChild(g);
+    });
+
+    /* Update inspector metadata */
+    document.getElementById('chip-name').innerText = chip.name;
+    document.getElementById('chip-desc').innerText = chip.desc;
+    const tag = document.getElementById('chip-type-tag');
+    tag.innerText       = chip.tag;
+    tag.style.background = chip.tagColor;
+    tag.style.color     = chip.tagColor === 'var(--accent-ru)' ? '#000' : '#fff';
+
+    const specList = document.getElementById('spec-list');
+    specList.innerHTML  = '';
+    for (const [k, v] of Object.entries(chip.specs)) {
+        specList.innerHTML +=
+            `<div class="spec-row"><span style="color:#444">${k}</span><span class="spec-val">${v}</span></div>`;
+    }
+}
+
+function svgEl(tag) {
+    return document.createElementNS('http://www.w3.org/2000/svg', tag);
+}
+
+function updateCoords(e) {
+    const svg = document.getElementById('chip-svg');
+    const pt  = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const cp = pt.matrixTransform(svg.getScreenCTM().inverse());
+    document.getElementById('coord-panel').innerText =
+        `DIE_X: ${(cp.x / 10).toFixed(2)} | DIE_Y: ${(cp.y / 10).toFixed(2)}`;
+}
+
+/* ── Boot ────────────────────────────────────────────────────────────── */
+window.onload = async () => {
+    /* Load chip data from backend API */
+    try {
+        const res = await fetch('/api/chips');
+        chips     = await res.json();
+    } catch (e) {
+        console.error('Failed to load chip data:', e);
+    }
+
+    /* Render initial chip */
+    const firstTab = document.querySelector('.tab');
+    switchChip('ru', { currentTarget: firstTab });
+
+    /* Load WASM simulation engine */
+    await loadSimWasm();
+
+    /* Clock */
+    setInterval(() => {
+        const now = new Date();
+        document.getElementById('clock').innerText =
+            `SYS_TIME: ${now.toISOString().replace('T', '_').split('.')[0]}`;
+    }, 1000);
+};
+</script>
+
+</body>
+</html>

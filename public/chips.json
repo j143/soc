@@ -1,0 +1,53 @@
+{
+  "ru": {
+    "name": "BroadPeak BCM85021",
+    "tag": "RADIO_PHY",
+    "tagColor": "var(--accent-ru)",
+    "desc": "The primary 6G Radio Unit SoC. Integrated high-speed data converters with Neural DPD logic.",
+    "specs": { "Node": "5nm FinFET", "ADC/DAC": "19.6 GS/s", "Die Size": "142 mm²", "TDP": "18W" },
+    "layout": [
+      {"id": "afe_l",  "x": 150, "y": 100, "w": 100, "h": 400, "label": "ADC_BANK_L"},
+      {"id": "afe_r",  "x": 750, "y": 100, "w": 100, "h": 400, "label": "DAC_BANK_R"},
+      {"id": "logic",  "x": 260, "y": 100, "w": 480, "h": 300, "label": "DFE_LOGIC_CORE"},
+      {"id": "neural", "x": 300, "y": 120, "w": 400, "h": 100, "label": "NEURAL_DPD_CLUSTER", "highlight": true},
+      {"id": "io",     "x": 150, "y": 510, "w": 700, "h": 100, "label": "JESD204C_INTERFACE"}
+    ]
+  },
+  "du": {
+    "name": "Xeon 6 vRAN SoC",
+    "tag": "COMPUTE_DU",
+    "tagColor": "var(--accent-du)",
+    "desc": "L1/L2 Physical layer processing. Features hardware-integrated AMX and vRAN Boost acceleration.",
+    "specs": { "Node": "Intel 3", "Cores": "72-Core P-Core", "AI Ops": "AMX FP16", "Memory": "8-Ch DDR5" },
+    "layout": [
+      {"id": "cores", "x": 200, "y": 100, "w": 600, "h": 400, "label": "72_CORE_COMPUTE_GRID"},
+      {"id": "amx",   "x": 250, "y": 150, "w": 500, "h": 100, "label": "AMX_AI_ACCELERATORS", "highlight": true},
+      {"id": "boost", "x": 200, "y": 510, "w": 300, "h": 150, "label": "vRAN_BOOST_LDPC"},
+      {"id": "mem",   "x": 510, "y": 510, "w": 290, "h": 150, "label": "MEMORY_CONTROLLERS"}
+    ]
+  },
+  "cu": {
+    "name": "NVIDIA Aerial GH200",
+    "tag": "AI_CU_EDGE",
+    "tagColor": "var(--accent-cu)",
+    "desc": "Combined CPU/GPU architecture for the Centralized Unit. Runs RIC (RAN Intelligent Controller) and L3 stacks.",
+    "specs": { "Node": "4N TSMC", "Memory": "96GB HBM3", "BW": "4 TB/s", "Role": "AI-RAN Control" },
+    "layout": [
+      {"id": "gpu", "x": 150, "y":  80, "w": 500, "h": 500, "label": "TURING_AI_MATRIX"},
+      {"id": "hbm", "x": 660, "y":  80, "w": 100, "h": 500, "label": "HBM3_STACKS", "highlight": true},
+      {"id": "cpu", "x": 150, "y": 600, "w": 610, "h": 120, "label": "GRACE_ARM_CORES"}
+    ]
+  },
+  "io": {
+    "name": "Marvell Teralynx 10",
+    "tag": "TRANSPORT_PHY",
+    "tagColor": "var(--accent-io)",
+    "desc": "Low-latency switching fabric for 6G fronthaul. Handles 800G optical links with PAM4 DSP.",
+    "specs": { "Node": "5nm", "Throughput": "51.2 Tbps", "Latency": "<500ns", "Phy": "PAM4 112G" },
+    "layout": [
+      {"id": "switch",   "x": 250, "y": 150, "w": 500, "h": 400, "label": "SWITCH_FABRIC_CORE"},
+      {"id": "serdes_l", "x": 100, "y": 100, "w": 140, "h": 600, "label": "PAM4_SERDES_L"},
+      {"id": "serdes_r", "x": 760, "y": 100, "w": 140, "h": 600, "label": "PAM4_SERDES_R", "highlight": true}
+    ]
+  }
+}
