@@ -241,7 +241,7 @@ let currentBlockId = null;
 /* ── WASM loader ────────────────────────────────────────────────────── */
 async function loadSimWasm() {
     try {
-        const res    = await fetch('/sim.wasm');
+        const res    = await fetch('./sim.wasm');
         const bytes  = await res.arrayBuffer();
         const result = await WebAssembly.instantiate(bytes, {});
         simModule    = result.instance.exports;
@@ -468,7 +468,7 @@ function updateCoords(e) {
 window.onload = async () => {
     /* Load chip data from backend API */
     try {
-        const res = await fetch('/api/chips');
+        const res = await fetch('./chips.json');
         chips     = await res.json();
     } catch (e) {
         console.error('Failed to load chip data:', e);
