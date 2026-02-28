@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6G-RAN Silicon Hierarchy: Die-Level Visualizer</title>
+    <style>
+        :root {
+            --bg-cad: #050507;
+            --die-base: #121216;
+            --border-cad: #2a2a32;
+            --text-cad: #8a8a95;
+            --accent-ru: #fbbf24; /* Gold/Analog */
+            --accent-du: #38bdf8; /* Blue/Compute */
+            --accent-cu: #a855f7; /* Purple/AI */
+            --accent-io: #22c55e; /* Green/IO */
+            --trace: #1c1c22;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-cad);
+            color: var(--text-cad);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 15px 25px;
+            background: #000;
+            border-bottom: 2px solid var(--border-cad);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #111;
+            padding: 5px;
+            gap: 5px;
+            border-bottom: 1px solid var(--border-cad);
+        }
+
+        .tab {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            font-size: 11px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .tab:hover { background: #1a1a20; }
+        .tab.active {
+            border-color: var(--border-cad);
+            background: #222;
+            color: #fff;
+        }
+
+        .main-view {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .die-canvas {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image: radial-gradient(circle at center, #111, #000);
+            cursor: crosshair;
+        }
+
+        .inspector {
+            width: 350px;
+            border-left: 2px solid var(--border-cad);
+            background: #08080a;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            font-size: 11px;
+            overflow-y: auto;
+        }
+
+        svg {
+            width: 90%;
+            height: 90%;
+            max-width: 900px;
+            background: #000;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        /* Elements */
+        .die-rect { fill: var(--die-base); stroke: #333; stroke-width: 1; }
+        .block-rect { fill: #0a0a0c; stroke: #222; stroke-width: 1; transition: all 0.3s; cursor: pointer; }
+        .block-rect:hover { stroke: #555; fill: #111; }
+        .io-bump { fill: #111; stroke: #333; stroke-width: 0.5; }
+        .mesh-line { stroke: #18181b; stroke-width: 0.3; fill: none; }
+        .label { font-size: 9px; fill: #444; pointer-events: none; text-transform: uppercase; }
+        .active-label { fill: #fff !important; }
+
+        .spec-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #1a1a1e;
+        }
+        .spec-val { color: #fff; font-weight: bold; }
+
+        #coord-panel {
+            position: absolute;
+            bottom: 15px;
+            left: 20px;
+            font-size: 10px;
+            color: #444;
+        }
+
+        .chip-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .pulse { animation: pulse-anim 2s infinite; }
+        @keyframes pulse-anim {
+            0% { opacity: 0.3; }
+            50% { opacity: 0.7; }
+            100% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body onmousemove="updateCoords(event)">
+
+<header>
+    <div style="font-weight: bold; color: #fff;">6G_FABRICATION_GALLERY v1.0</div>
+    <div id="clock">SYS_TIME: 2026.03.01_00:52:11</div>
+</header>
+
+<div class="nav-tabs">
+    <div class="tab active" onclick="switchChip('ru')">Radio Unit (RU) SoC</div>
+    <div class="tab" onclick="switchChip('du')">Distributed Unit (DU)</div>
+    <div class="tab" onclick="switchChip('cu')">Central Unit (CU/AI)</div>
+    <div class="tab" onclick="switchChip('io')">Transport/Fronthaul</div>
+</div>
+
+<div class="main-view">
+    <div class="die-canvas" id="viewport">
+        <div id="coord-panel">DIE_X: 0.00 | DIE_Y: 0.00</div>
+        <svg viewBox="0 0 1000 800" id="chip-svg">
+            <defs>
+                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0f0f12" stroke-width="0.5"/>
+                </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+            <g id="chip-layer"></g>
+        </svg>
+    </div>
+
+    <div class="inspector" id="inspector">
+        <div id="chip-meta">
+            <div id="chip-type-tag" class="chip-tag" style="background: var(--accent-ru); color: #000;">RADIO_PHY</div>
+            <h2 id="chip-name" style="margin: 0; color: #fff; font-size: 18px;">BroadPeak BCM85021</h2>
+            <p id="chip-desc" style="color: #666; line-height: 1.4; margin: 10px 0;">5nm CMOS Direct-RF Digital Front End.</p>
+        </div>
+
+        <div style="border-top: 1px solid #222; padding-top: 15px;">
+            <div style="color: #444; margin-bottom: 10px;">LITHOGRAPHY_STATS</div>
+            <div id="spec-list"></div>
+        </div>
+
+        <div style="margin-top: auto;">
+            <div style="color: #333; font-size: 9px;">CAD_LAYER_VIEW: METAL_12_TOP</div>
+            <div style="height: 4px; background: #111; margin-top: 5px;">
+                <div style="width: 75%; height: 100%; background: #444;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chips = {
+        ru: {
+            name: "BroadPeak BCM85021",
+            tag: "RADIO_PHY",
+            tagColor: "var(--accent-ru)",
+            desc: "The primary 6G Radio Unit SoC. Integrated high-speed data converters with Neural DPD logic.",
+            specs: { "Node": "5nm FinFET", "ADC/DAC": "19.6 GS/s", "Die Size": "142 mm²", "TDP": "18W" },
+            layout: [
+                {id: 'afe_l', x: 150, y: 100, w: 100, h: 400, label: 'ADC_BANK_L'},
+                {id: 'afe_r', x: 750, y: 100, w: 100, h: 400, label: 'DAC_BANK_R'},
+                {id: 'logic', x: 260, y: 100, w: 480, h: 300, label: 'DFE_LOGIC_CORE'},
+                {id: 'neural', x: 300, y: 120, w: 400, h: 100, label: 'NEURAL_DPD_CLUSTER', highlight: true},
+                {id: 'io', x: 150, y: 510, w: 700, h: 100, label: 'JESD204C_INTERFACE'}
+            ]
+        },
+        du: {
+            name: "Xeon 6 vRAN SoC",
+            tag: "COMPUTE_DU",
+            tagColor: "var(--accent-du)",
+            desc: "L1/L2 Physical layer processing. Features hardware-integrated AMX and vRAN Boost acceleration.",
+            specs: { "Node": "Intel 3", "Cores": "72-Core P-Core", "AI Ops": "AMX FP16", "Memory": "8-Ch DDR5" },
+            layout: [
+                {id: 'cores', x: 200, y: 100, w: 600, h: 400, label: '72_CORE_COMPUTE_GRID'},
+                {id: 'amx', x: 250, y: 150, w: 500, h: 100, label: 'AMX_AI_ACCELERATORS', highlight: true},
+                {id: 'boost', x: 200, y: 510, w: 300, h: 150, label: 'vRAN_BOOST_LDPC'},
+                {id: 'mem', x: 510, y: 510, w: 290, h: 150, label: 'MEMORY_CONTROLLERS'}
+            ]
+        },
+        cu: {
+            name: "NVIDIA Aerial GH200",
+            tag: "AI_CU_EDGE",
+            tagColor: "var(--accent-cu)",
+            desc: "Combined CPU/GPU architecture for the Centralized Unit. Runs RIC (RAN Intelligent Controller) and L3 stacks.",
+            specs: { "Node": "4N TSMC", "Memory": "96GB HBM3", "BW": "4 TB/s", "Role": "AI-RAN Control" },
+            layout: [
+                {id: 'gpu', x: 150, y: 80, w: 500, h: 500, label: 'TURING_AI_MATRIX'},
+                {id: 'hbm', x: 660, y: 80, w: 100, h: 500, label: 'HBM3_STACKS', highlight: true},
+                {id: 'cpu', x: 150, y: 600, w: 610, h: 120, label: 'GRACE_ARM_CORES'}
+            ]
+        },
+        io: {
+            name: "Marvell Teralynx 10",
+            tag: "TRANSPORT_PHY",
+            tagColor: "var(--accent-io)",
+            desc: "Low-latency switching fabric for 6G fronthaul. Handles 800G optical links with PAM4 DSP.",
+            specs: { "Node": "5nm", "Throughput": "51.2 Tbps", "Latency": "<500ns", "Phy": "PAM4 112G" },
+            layout: [
+                {id: 'switch', x: 250, y: 150, w: 500, h: 400, label: 'SWITCH_FABRIC_CORE'},
+                {id: 'serdes_l', x: 100, y: 100, w: 140, h: 600, label: 'PAM4_SERDES_L'},
+                {id: 'serdes_r', x: 760, y: 100, w: 140, h: 600, label: 'PAM4_SERDES_R', highlight: true}
+            ]
+        }
+    };
+
+    function updateCoords(e) {
+        const svg = document.getElementById('chip-svg');
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const cursorPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+        document.getElementById('coord-panel').innerText = `DIE_X: ${(cursorPt.x / 10).toFixed(2)} | DIE_Y: ${(cursorPt.y / 10).toFixed(2)}`;
+    }
+
+    function switchChip(key) {
+        // Tab styling
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+
+        const chip = chips[key];
+        const layer = document.getElementById('chip-layer');
+        layer.innerHTML = '';
+
+        // Draw Die
+        const die = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        die.setAttribute("x", "100");
+        die.setAttribute("y", "50");
+        die.setAttribute("width", "800");
+        die.setAttribute("height", "700");
+        die.setAttribute("class", "die-rect");
+        layer.appendChild(die);
+
+        // Draw Pads
+        for(let i=110; i<890; i+=20) {
+            const padT = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            padT.setAttribute("x", i); padT.setAttribute("y", 52); padT.setAttribute("width", 8); padT.setAttribute("height", 8); padT.setAttribute("class", "io-bump");
+            layer.appendChild(padT);
+            const padB = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            padB.setAttribute("x", i); padB.setAttribute("y", 740); padB.setAttribute("width", 8); padB.setAttribute("height", 8); padB.setAttribute("class", "io-bump");
+            layer.appendChild(padB);
+        }
+
+        // Draw Blocks
+        chip.layout.forEach(b => {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", b.x);
+            rect.setAttribute("y", b.y);
+            rect.setAttribute("width", b.w);
+            rect.setAttribute("height", b.h);
+            rect.setAttribute("class", "block-rect" + (b.highlight ? " pulse" : ""));
+            if(b.highlight) rect.style.stroke = chip.tagColor;
+            
+            const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            txt.setAttribute("x", b.x + (b.w/2));
+            txt.setAttribute("y", b.y + (b.h/2));
+            txt.setAttribute("text-anchor", "middle");
+            txt.setAttribute("class", "label" + (b.highlight ? " active-label" : ""));
+            txt.textContent = b.label;
+
+            g.appendChild(rect);
+            g.appendChild(txt);
+            layer.appendChild(g);
+        });
+
+        // Update Inspector
+        document.getElementById('chip-name').innerText = chip.name;
+        document.getElementById('chip-desc').innerText = chip.desc;
+        const tag = document.getElementById('chip-type-tag');
+        tag.innerText = chip.tag;
+        tag.style.background = chip.tagColor;
+
+        const specs = document.getElementById('spec-list');
+        specs.innerHTML = '';
+        for(const [k, v] of Object.entries(chip.specs)) {
+            specs.innerHTML += `<div class="spec-row"><span style="color:#444">${k}</span><span class="spec-val">${v}</span></div>`;
+        }
+    }
+
+    // Init
+    window.onload = () => {
+        switchChip('ru');
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = `SYS_TIME: ${now.toISOString().replace('T','_').split('.')[0]}`;
+        }, 1000);
+    };
+</script>
+
+</body>
+</html>
