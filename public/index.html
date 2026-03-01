@@ -165,13 +165,67 @@
         }
         #sim-btn:hover { background: #1a1a20; color: #aaa; border-color: #555; }
         #sim-btn:disabled { cursor: not-allowed; color: #333; }
+
+        /* Thermal overlay toggle */
+        #thermal-btn {
+            margin-top: 8px;
+            background: #111;
+            border: 1px solid #333;
+            color: #666;
+            padding: 7px 12px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            width: 100%;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+        }
+        #thermal-btn:hover { background: #1a1a20; color: #aaa; border-color: #555; }
+        #thermal-btn.active { color: #fbbf24; border-color: #fbbf24; }
+
+        /* Telemetry log panel */
+        #telemetry-panel {
+            border-top: 1px solid #222;
+            padding-top: 15px;
+            flex-shrink: 0;
+        }
+        #telemetry-header {
+            color: #444;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #telemetry-log {
+            height: 90px;
+            overflow-y: auto;
+            background: #050507;
+            border: 1px solid #1a1a1e;
+            padding: 5px;
+            font-size: 9px;
+        }
+        .tlog-entry { color: #22c55e; padding: 1px 0; border-bottom: 1px solid #0a0a0c; }
+
+        /* Nav link */
+        .nav-link {
+            font-size: 10px;
+            color: #444;
+            text-decoration: none;
+            padding: 5px 10px;
+            border: 1px solid #222;
+            text-transform: uppercase;
+        }
+        .nav-link:hover { color: #aaa; border-color: #555; }
     </style>
 </head>
 <body onmousemove="updateCoords(event)">
 
 <header>
     <div style="font-weight: bold; color: #fff;">6G_FABRICATION_GALLERY v1.0</div>
-    <div id="clock">SYS_TIME: --</div>
+    <div style="display:flex; gap:15px; align-items:center;">
+        <a href="./chip-architecture-visualization.html" class="nav-link">DIE_PLOT_VIEW</a>
+        <div id="clock">SYS_TIME: --</div>
+    </div>
 </header>
 
 <div class="nav-tabs">
@@ -217,6 +271,16 @@
             </div>
             <div id="sim-results" style="color:#555; font-size:10px;">Click a die block to run simulation</div>
             <button id="sim-btn" disabled onclick="runSimulation(currentBlockId)">▶ RUN_SIMULATION</button>
+            <button id="thermal-btn" onclick="toggleThermalOverlay()">⬤ THERMAL_OVERLAY</button>
+        </div>
+
+        <!-- Telemetry streaming panel -->
+        <div id="telemetry-panel">
+            <div id="telemetry-header">
+                <span>TELEMETRY_STREAM</span>
+                <span id="telem-status" style="color:#333; font-size:9px;">⬤ IDLE</span>
+            </div>
+            <div id="telemetry-log"><div style="color:#333;font-size:9px;">Select a block to stream telemetry</div></div>
         </div>
 
         <!-- Status bar -->
@@ -237,6 +301,11 @@ let chips          = {};      // populated from /api/chips
 let simModule      = null;    // WebAssembly instance exports
 let currentChipKey = 'ru';
 let currentBlockId = null;
+let thermalActive  = false;   // thermal overlay state
+let telemInterval  = null;    // telemetry streaming timer
+const TELEM_SIZE   = 24;
+const telemBuf     = new Float32Array(TELEM_SIZE); // typed-array ring buffer
+let telemHead      = 0;
 
 /* ── WASM loader ────────────────────────────────────────────────────── */
 async function loadSimWasm() {
@@ -364,10 +433,93 @@ function row(label, val) {
     return `<div class="sim-row"><span>${label}</span><span class="sim-val">${val}</span></div>`;
 }
 
+/* ── Thermal overlay ────────────────────────────────────────────────── */
+function thermalColor(t) {
+    // t in [0,1]: cold=dark-blue → warm=amber → hot=red
+    const r = Math.round(Math.min(255, t * 2 * 255));
+    const g = Math.round(Math.max(0, (0.5 - Math.abs(t - 0.5)) * 255));
+    const b = Math.round(Math.max(0, (1 - t * 2) * 200));
+    return `rgba(${r},${g},${b},0.55)`;
+}
+
+function toggleThermalOverlay() {
+    thermalActive = !thermalActive;
+    const btn = document.getElementById('thermal-btn');
+    if (thermalActive) {
+        btn.classList.add('active');
+        renderThermalOverlay();
+    } else {
+        btn.classList.remove('active');
+        clearThermalOverlay();
+    }
+}
+
+function renderThermalOverlay() {
+    if (!simModule) return;
+    const chipParams = simParams[currentChipKey];
+    if (!chipParams) return;
+
+    const entries = Object.entries(chipParams);
+    const densities = new Float32Array(entries.length);
+
+    entries.forEach(([, p], i) => {
+        const pw = simModule.compute_block_power(p.blockType, p.freqGhz, p.vdd, p.activeFactor);
+        densities[i] = simModule.compute_power_density(pw, p.area);
+    });
+
+    const maxD = Math.max(...densities) || 1;
+    entries.forEach(([blockId], i) => {
+        const rect = document.querySelector(`#chip-layer rect[data-block-id="${blockId}"]`);
+        if (rect) rect.style.fill = thermalColor(densities[i] / maxD);
+    });
+}
+
+function clearThermalOverlay() {
+    document.querySelectorAll('#chip-layer rect[data-block-id]').forEach(r => {
+        r.style.fill = '';
+    });
+}
+
+/* ── Telemetry streaming ────────────────────────────────────────────── */
+function startTelemetry(blockId) {
+    stopTelemetry();
+    if (!simModule || !blockId) return;
+    const p = simParams[currentChipKey]?.[blockId];
+    if (!p) return;
+
+    document.getElementById('telem-status').textContent  = '⬤ STREAMING';
+    document.getElementById('telem-status').style.color  = '#22c55e';
+
+    telemInterval = setInterval(() => {
+        const noise = () => 1.0 + (Math.random() - 0.5) * 0.08;
+        const pw   = simModule.compute_block_power(p.blockType, p.freqGhz * noise(), p.vdd * noise(), p.activeFactor * noise());
+        const temp = simModule.compute_thermal(pw, 15.0, 25.0);
+
+        telemBuf[telemHead % TELEM_SIZE] = temp;
+        telemHead++;
+
+        const ts  = new Date().toISOString().split('T')[1].replace('Z','');
+        const log = document.getElementById('telemetry-log');
+        const div = document.createElement('div');
+        div.className = 'tlog-entry';
+        div.textContent = `[${ts}] T=${temp.toFixed(2)}°C  P=${pw.toFixed(1)}mW`;
+        log.insertBefore(div, log.firstChild);
+        if (log.children.length > TELEM_SIZE) log.removeChild(log.lastChild);
+    }, 400);
+}
+
+function stopTelemetry() {
+    if (telemInterval) { clearInterval(telemInterval); telemInterval = null; }
+    const st = document.getElementById('telem-status');
+    if (st) { st.textContent = '⬤ IDLE'; st.style.color = '#333'; }
+}
+
 /* ── Chip rendering ─────────────────────────────────────────────────── */
 function switchChip(key, evt) {
     currentChipKey = key;
     currentBlockId = null;
+    stopTelemetry();
+    if (thermalActive) clearThermalOverlay();
     document.getElementById('sim-results').innerHTML =
         '<div style="color:#555; font-size:10px;">Click a die block to run simulation</div>';
 
@@ -410,6 +562,7 @@ function switchChip(key, evt) {
         rect.setAttribute('x', b.x); rect.setAttribute('y', b.y);
         rect.setAttribute('width', b.w); rect.setAttribute('height', b.h);
         rect.setAttribute('class', 'block-rect' + (b.highlight ? ' pulse' : ''));
+        rect.setAttribute('data-block-id', b.id);
         if (b.highlight) rect.style.stroke = chip.tagColor;
 
         const txt = svgEl('text');
@@ -430,6 +583,8 @@ function switchChip(key, evt) {
             rect.classList.add('selected');
             currentBlockId = b.id;
             runSimulation(b.id);
+            startTelemetry(b.id);
+            if (thermalActive) renderThermalOverlay();
         });
 
         layer.appendChild(g);
@@ -466,12 +621,21 @@ function updateCoords(e) {
 
 /* ── Boot ────────────────────────────────────────────────────────────── */
 window.onload = async () => {
-    /* Load chip data from backend API */
+    /* Load chip data — try backend API, fall back to static JSON (GitHub Pages) */
     try {
-        const res = await fetch('./chips.json');
-        chips     = await res.json();
-    } catch (e) {
-        console.error('Failed to load chip data:', e);
+        const res = await fetch('/api/chips');
+        if (res.ok) {
+            chips = await res.json();
+        } else {
+            throw new Error('API unavailable');
+        }
+    } catch (_) {
+        try {
+            const res = await fetch('./chips.json');
+            chips     = await res.json();
+        } catch (err) {
+            console.error('Failed to load chip data:', err);
+        }
     }
 
     /* Render initial chip */
