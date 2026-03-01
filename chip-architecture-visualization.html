@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6G Infrastructure: Fabrication-Level Die Plot</title>
+    <style>
+        :root {
+            --wafer-bg: #0a0a0c;
+            --die-base: #141418;
+            --metal-1: #2d2d35;
+            --metal-2: #3f3f4a;
+            --metal-gold: #c5a059;
+            --logic-gate: #1a1a20;
+            --accent-cad: #00f2ff;
+            --text-cad: #8a8a95;
+            --border-cad: #2a2a32;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--wafer-bg);
+            color: var(--text-cad);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        header {
+            padding: 10px 20px;
+            background: #000;
+            border-bottom: 2px solid var(--border-cad);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .viewport {
+            flex: 1;
+            background-image: 
+                linear-gradient(var(--border-cad) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border-cad) 1px, transparent 1px);
+            background-size: 40px 40px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        .inspector {
+            width: 320px;
+            background: #050507;
+            border-left: 2px solid var(--border-cad);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        /* SVG Fabrication Details */
+        svg {
+            width: 850px;
+            height: 650px;
+            background: #000;
+            box-shadow: 0 0 0 10px #000, 0 0 40px rgba(0,0,0,0.8);
+        }
+
+        .die-boundary {
+            fill: var(--die-base);
+            stroke: #444;
+            stroke-width: 1;
+        }
+
+        /* Sub-surface grid representing metal density */
+        .metal-grid {
+            stroke: #1a1a1e;
+            stroke-width: 0.5;
+        }
+
+        .component-block {
+            cursor: pointer;
+            pointer-events: all;
+        }
+
+        .component-block rect {
+            fill: var(--logic-gate);
+            stroke: var(--border-cad);
+            stroke-width: 1;
+        }
+
+        .component-block:hover rect {
+            stroke: var(--accent-cad);
+            fill: #1c1c24;
+        }
+
+        .power-mesh {
+            fill: none;
+            stroke: #1f1f26;
+            stroke-width: 0.2;
+        }
+
+        .alignment-mark {
+            stroke: #555;
+            stroke-width: 1;
+            fill: none;
+        }
+
+        .io-pad {
+            fill: #111;
+            stroke: #333;
+            stroke-width: 1;
+        }
+
+        .io-pad-active {
+            fill: var(--metal-gold) !important;
+            opacity: 0.8;
+        }
+
+        .text-overlay {
+            font-size: 8px;
+            fill: #444;
+            pointer-events: none;
+        }
+
+        .active-selection {
+            stroke: var(--accent-cad) !important;
+            stroke-width: 2 !important;
+            filter: drop-shadow(0 0 5px var(--accent-cad));
+        }
+
+        /* UI elements */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .data-table td {
+            padding: 6px 0;
+            border-bottom: 1px solid #1a1a1e;
+        }
+        .val { color: var(--accent-cad); text-align: right; }
+
+        .btn-toggle {
+            background: #111;
+            border: 1px solid #333;
+            color: #888;
+            padding: 5px;
+            cursor: pointer;
+            margin-bottom: 5px;
+        }
+        .btn-toggle:hover { color: #fff; border-color: #666; }
+
+        #coord-display {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 10px;
+            color: #444;
+        }
+    </style>
+</head>
+<body onmousemove="updateCoords(event)">
+
+<header>
+    <div>6G_DFE_DIE_PLOT_REV_4.02 // BROADPEAK_5NM</div>
+    <div style="color: #444;">SCALE: 1:1,000,000 (SILICON LEVEL)</div>
+</header>
+
+<div class="main-layout">
+    <div class="viewport" id="viewport">
+        <div id="coord-display">X: 0.000000 | Y: 0.000000</div>
+        <svg viewBox="0 0 1000 800" id="main-svg">
+            <defs>
+                <pattern id="metalDensity" width="10" height="10" patternUnits="userSpaceOnUse">
+                    <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#16161a" stroke-width="0.5"/>
+                </pattern>
+                <pattern id="finfetTexture" width="2" height="10" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="0" x2="0" y2="10" stroke="#1c1c22" stroke-width="0.2"/>
+                </pattern>
+            </defs>
+
+            <!-- Scribe Lines / Wafer Background -->
+            <rect x="0" y="0" width="1000" height="800" fill="#050507" />
+            
+            <!-- Die Base -->
+            <rect x="100" y="50" width="800" height="700" class="die-boundary" />
+            <rect x="100" y="50" width="800" height="700" fill="url(#metalDensity)" />
+
+            <!-- Alignment Marks (Corners) -->
+            <g class="alignment-mark">
+                <circle cx="120" cy="70" r="10" /> <path d="M110 70 H130 M120 60 V80" />
+                <circle cx="880" cy="70" r="10" /> <path d="M870 70 H890 M880 60 V80" />
+                <circle cx="120" cy="730" r="10" /> <path d="M110 730 H130 M120 720 V740" />
+                <circle cx="880" cy="730" r="10" /> <path d="M870 730 H890 M880 720 V740" />
+            </g>
+
+            <!-- I/O Ring (Solder Bumps / Pads) -->
+            <g id="io-pads"></g>
+
+            <!-- Functional Units -->
+            <!-- ANALOG FRONT END (LEFT) -->
+            <g class="component-block" onclick="inspect('afe_left')">
+                <rect x="130" y="80" width="140" height="300" rx="0" />
+                <rect x="135" y="85" width="130" height="290" fill="url(#finfetTexture)" opacity="0.5" />
+                <text x="200" y="370" text-anchor="middle" class="text-overlay">PHY_AFE_CH_1-4</text>
+            </g>
+
+            <!-- ANALOG FRONT END (RIGHT) -->
+            <g class="component-block" onclick="inspect('afe_right')">
+                <rect x="730" y="80" width="140" height="300" rx="0" />
+                <rect x="735" y="85" width="130" height="290" fill="url(#finfetTexture)" opacity="0.5" />
+                <text x="800" y="370" text-anchor="middle" class="text-overlay">PHY_AFE_CH_5-8</text>
+            </g>
+
+            <!-- LOGIC CORE / DFE MESH -->
+            <g class="component-block" onclick="inspect('logic_dfe')">
+                <rect x="280" y="80" width="440" height="400" rx="0" />
+                <!-- Power Grid Mesh Over Logic -->
+                <path d="M280 120 H720 M280 160 H720 M280 200 H720 M280 240 H720 M280 280 H720 M280 320 H720 M280 360 H720" class="power-mesh" />
+                <path d="M320 80 V480 M360 80 V480 M400 80 V480 M440 80 V480 M480 80 V480 M520 80 V480 M560 80 V480 M600 80 V480 M640 80 V480 M680 80 V480" class="power-mesh" />
+                
+                <!-- AI Engine Cluster -->
+                <rect x="300" y="100" width="400" height="150" fill="#000" stroke="#444" stroke-dasharray="2,2" />
+                <text x="500" y="180" text-anchor="middle" class="text-overlay" style="fill:#888;">AI_DPD_ACCELERATOR_MATRIX</text>
+                <text x="500" y="470" text-anchor="middle" class="text-overlay">DIGITAL_FRONT_END_LITE_LOGIC</text>
+            </g>
+
+            <!-- MEMORY / NOC BUS -->
+            <g class="component-block" onclick="inspect('noc_bus')">
+                <rect x="130" y="490" width="740" height="60" rx="0" />
+                <text x="500" y="525" text-anchor="middle" class="text-overlay">HIGH_DENSITY_NOC_FABRIC_CXL_3.0</text>
+            </g>
+
+            <!-- SERDES INTERFACE -->
+            <g class="component-block" onclick="inspect('serdes')">
+                <rect x="130" y="560" width="740" height="180" rx="0" />
+                <path d="M130 580 H870 M130 620 H870 M130 660 H870 M130 700 H870" class="power-mesh" />
+                <text x="500" y="730" text-anchor="middle" class="text-overlay">TX_RX_SERDES_LANE_ARRAY (112G_PAM4)</text>
+            </g>
+
+            <!-- Fabrication ID Labels -->
+            <text x="110" y="65" class="text-overlay" style="fill:#333">PART_ID: BCM85021_5NM_A0</text>
+            <text x="760" y="745" class="text-overlay" style="fill:#333">C_COPYRIGHT_BROADCOM_2026</text>
+        </svg>
+    </div>
+
+    <div class="inspector">
+        <div style="border-bottom: 1px solid var(--border-cad); padding-bottom: 10px;">
+            <span style="color: #fff">FABRICATION_REPORT</span><br/>
+            STATUS: <span style="color: var(--accent-cad)">NOMINAL</span>
+        </div>
+
+        <div id="default-info">
+            <p>Select a die partition to view gate-level metrics and lithography parameters.</p>
+            <button class="btn-toggle">VIEW_THERMAL_MAP</button>
+            <button class="btn-toggle">EXPORT_GDSII_LOG</button>
+        </div>
+
+        <div id="inspect-pane" style="display:none;">
+            <div style="font-size: 14px; color: #fff; margin-bottom: 5px;" id="p-title">PARTITION</div>
+            <div id="p-id" style="color: #444; margin-bottom: 15px;">PART_001</div>
+            
+            <p id="p-desc" style="line-height: 1.4; color: #888;">
+                Partition metrics extracted from metal layers M1 through M12.
+            </p>
+
+            <table class="data-table">
+                <tbody id="p-stats">
+                    <!-- Dynamic -->
+                </tbody>
+            </table>
+
+            <div style="margin-top: 20px; border-top: 1px solid #1a1a1e; padding-top: 15px;">
+                <span style="color: #444">MASK_LAYER_PROFILE</span>
+                <div style="height: 40px; background: #111; margin-top: 5px; display: flex; align-items: flex-end; gap: 2px;">
+                    <div style="flex:1; background: #333; height: 30%;"></div>
+                    <div style="flex:1; background: #444; height: 80%;"></div>
+                    <div style="flex:1; background: var(--accent-cad); height: 95%;"></div>
+                    <div style="flex:1; background: #444; height: 40%;"></div>
+                    <div style="flex:1; background: #333; height: 20%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Generate industrial I/O pads around die perimeter
+    const padContainer = document.getElementById('io-pads');
+    const margin = 100;
+    const size = 10;
+    const dieW = 800;
+    const dieH = 700;
+
+    function createPad(x, y) {
+        const p = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        p.setAttribute("x", x);
+        p.setAttribute("y", y);
+        p.setAttribute("width", size);
+        p.setAttribute("height", size);
+        p.setAttribute("class", "io-pad");
+        padContainer.appendChild(p);
+    }
+
+    // Top & Bottom rows
+    for(let x = 110; x < 890; x += 15) {
+        createPad(x, 52);
+        createPad(x, 738);
+    }
+    // Left & Right rows
+    for(let y = 65; y < 735; y += 15) {
+        createPad(102, y);
+        createPad(888, y);
+    }
+
+    const fabData = {
+        afe_left: {
+            title: "ANALOG_FRONT_END (BANK_A)",
+            id: "LITH_L_1044",
+            desc: "Channels 1-4. Integrated wideband ADCs using FinFET-native capacitor arrays for matching.",
+            stats: { "Transistor_Type": "High-Vt_Analog", "Metal_Layers": "12_Copper", "Sample_Clock": "19.6_GHz", "Litho_Node": "5nm_EUV" }
+        },
+        afe_right: {
+            title: "ANALOG_FRONT_END (BANK_B)",
+            id: "LITH_R_1045",
+            desc: "Channels 5-8. Direct-RF DAC arrays with isolated power domains to prevent logic noise coupling.",
+            stats: { "SFDR_Value": "78_dBc", "Power_Rail": "1.2V_AVDD", "Thermal_TDP": "2.4W", "Coupling": "Isolated" }
+        },
+        logic_dfe: {
+            title: "DFE_COMPUTE_MESH",
+            id: "GATE_LOGIC_099",
+            desc: "The primary logic domain. Features the Neural DPD matrix and filter chains. High routing congestion area.",
+            stats: { "Gate_Density": "142_MTr/mm²", "Logic_Level": "0.75V_Vcore", "Neural_Ops": "2.4_TOPS", "Clock_Mesh": "H-Tree" }
+        },
+        noc_bus: {
+            title: "NOC_CXL_FABRIC",
+            id: "BUS_INTER_201",
+            desc: "Data-plane interconnect between PHY and Memory. Optimized for zero-wait state arbitration.",
+            stats: { "Bandwidth": "4.2_Tbps", "Latency": "0.42_ns", "Topology": "Crossbar", "ARQ": "Hardware_Eng" }
+        },
+        serdes: {
+            title: "PAM4_SERDES_BLOCK",
+            id: "IO_PHY_505",
+            desc: "Interface block for 112Gbps per lane. Uses complex equalization (FFE/DFE) for long-reach copper.",
+            stats: { "Lanes": "16_Total", "Encoding": "PAM4_64B/66B", "BER_Floor": "1e-15", "PLL_Type": "Ring_LC" }
+        }
+    };
+
+    function inspect(key) {
+        document.querySelectorAll('.component-block rect').forEach(r => r.classList.remove('active-selection'));
+        event.currentTarget.querySelector('rect').classList.add('active-selection');
+
+        document.getElementById('default-info').style.display = 'none';
+        const pane = document.getElementById('inspect-pane');
+        pane.style.display = 'block';
+
+        const data = fabData[key];
+        document.getElementById('p-title').innerText = data.title;
+        document.getElementById('p-id').innerText = data.id;
+        document.getElementById('p-desc').innerText = data.desc;
+
+        const statBody = document.getElementById('p-stats');
+        statBody.innerHTML = '';
+        for(const [k, v] of Object.entries(data.stats)) {
+            statBody.innerHTML += `<tr><td>${k}</td><td class="val">${v}</td></tr>`;
+        }
+
+        // Randomize some pad activities for high-fidelity feel
+        document.querySelectorAll('.io-pad').forEach(p => {
+            p.classList.remove('io-pad-active');
+            if(Math.random() > 0.95) p.classList.add('io-pad-active');
+        });
+    }
+
+    function updateCoords(e) {
+        const rect = document.getElementById('main-svg').getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width).toFixed(6);
+        const y = ((e.clientY - rect.top) / rect.height).toFixed(6);
+        document.getElementById('coord-display').innerText = `X: ${x} | Y: ${y}`;
+    }
+</script>
+
+</body>
+</html>

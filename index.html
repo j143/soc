@@ -3,24 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>6G-RAN Silicon Hierarchy: Die-Level Visualizer</title>
+    <title>6G-RAN Silicon Hierarchy: Pro-Grade Visualizer</title>
     <style>
+        /* --- ENHANCED INDUSTRIAL PALETTE --- */
         :root {
-            --bg-cad: #050507;
-            --die-base: #121216;
-            --border-cad: #2a2a32;
-            --text-cad: #8a8a95;
-            --accent-ru: #fbbf24; /* Gold/Analog */
-            --accent-du: #38bdf8; /* Blue/Compute */
-            --accent-cu: #a855f7; /* Purple/AI */
-            --accent-io: #22c55e; /* Green/IO */
-            --trace: #1c1c22;
+            --bg-base: #010102;
+            --bg-panel: #08080c;
+            --die-substrate: #12121c; 
+            --border-industrial: #2a2a35;
+            --text-primary: #f8f8f2;
+            --text-secondary: #9494a5;
+            --text-dim: #555565;
+            
+            --accent-ru: #f59e0b; 
+            --accent-du: #3b82f6; 
+            --accent-cu: #a855f7; 
+            --accent-io: #10b981; 
+            
+            --thermal-hot: #ef4444;
+            --thermal-norm: #22c55e;
+            --stream-active: #00f2ff;
         }
 
+        * { box-sizing: border-box; }
+
         body {
-            font-family: 'Courier New', monospace;
-            background-color: var(--bg-cad);
-            color: var(--text-cad);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
             margin: 0;
             display: flex;
             flex-direction: column;
@@ -28,304 +38,615 @@
             overflow: hidden;
         }
 
+        /* --- HEADER --- */
         header {
-            padding: 15px 25px;
+            height: 64px;
             background: #000;
-            border-bottom: 2px solid var(--border-cad);
+            border-bottom: 2px solid var(--border-industrial);
+            padding: 0 24px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: space-between;
+            z-index: 100;
         }
 
-        .nav-tabs {
-            display: flex;
-            background: #111;
-            padding: 5px;
-            gap: 5px;
-            border-bottom: 1px solid var(--border-cad);
-        }
-
-        .tab {
-            padding: 8px 15px;
-            cursor: pointer;
-            border: 1px solid transparent;
-            font-size: 11px;
-            text-transform: uppercase;
-            transition: all 0.2s;
-        }
-
-        .tab:hover { background: #1a1a20; }
-        .tab.active {
-            border-color: var(--border-cad);
-            background: #222;
+        .header-title {
+            font-weight: 900;
+            letter-spacing: 2.5px;
+            font-size: 14px;
             color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        .main-view {
+        .chip-nav {
+            display: flex;
+            background: #0a0a0f;
+            padding: 4px;
+            border-radius: 8px;
+            gap: 4px;
+            border: 1px solid #1a1a24;
+        }
+
+        .nav-item {
+            padding: 8px 18px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 5px;
+            color: var(--text-secondary);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-item:hover { color: #fff; background: #1a1a26; }
+        .nav-item.active {
+            background: #3b82f6;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* --- MAIN VIEW --- */
+        main {
             display: flex;
             flex: 1;
             overflow: hidden;
         }
 
-        .die-canvas {
+        .viewport {
             flex: 1;
             position: relative;
+            background: radial-gradient(circle at center, #0f121d 0%, #010102 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            background-image: radial-gradient(circle at center, #111, #000);
-            cursor: crosshair;
+            padding: 20px;
+            overflow: hidden;
         }
 
         .inspector {
-            width: 350px;
-            border-left: 2px solid var(--border-cad);
-            background: #08080a;
-            padding: 20px;
+            width: 440px;
+            background: var(--bg-panel);
+            border-left: 2px solid var(--border-industrial);
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            font-size: 11px;
             overflow-y: auto;
         }
 
-        svg {
-            width: 90%;
+        /* --- SVG STYLING --- */
+        #die-plot {
+            width: 100%;
             height: 90%;
-            max-width: 900px;
-            background: #000;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            max-width: 950px;
+            filter: drop-shadow(0 40px 80px rgba(0,0,0,0.95));
         }
 
-        /* Elements */
-        .die-rect { fill: var(--die-base); stroke: #333; stroke-width: 1; }
-        .block-rect { fill: #0a0a0c; stroke: #222; stroke-width: 1; transition: all 0.3s; cursor: pointer; }
-        .block-rect:hover { stroke: #555; fill: #111; }
-        .io-bump { fill: #111; stroke: #333; stroke-width: 0.5; }
-        .mesh-line { stroke: #18181b; stroke-width: 0.3; fill: none; }
-        .label { font-size: 9px; fill: #444; pointer-events: none; text-transform: uppercase; }
-        .active-label { fill: #fff !important; }
+        .substrate { 
+            fill: var(--die-substrate); 
+            stroke: #333348; 
+            stroke-width: 2; 
+        }
 
-        .spec-row {
+        .logic-block { 
+            fill: #08080d; 
+            stroke: #444458; 
+            stroke-width: 1.5; 
+            cursor: pointer; 
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .logic-block:hover { 
+            fill: #12121d; 
+            stroke: #777799; 
+            transform: scale(1.002);
+        }
+        .block-selected { 
+            stroke-width: 4 !important; 
+            filter: drop-shadow(0 0 15px rgba(255,255,255,0.15));
+        }
+
+        .io-ring { fill: #000; stroke: #333340; stroke-width: 1.5; }
+        .scribe-line { stroke: #2a2a38; stroke-width: 0.8; stroke-dasharray: 6 10; }
+        
+        .metal-fill { fill: url(#metalDensity); opacity: 0.7; }
+        .stream-trace { stroke: var(--stream-active); stroke-width: 1; fill: none; opacity: 0; }
+
+        /* --- INSPECTOR UI --- */
+        .panel-section {
+            padding: 28px;
+            border-bottom: 2px solid var(--border-industrial);
+        }
+
+        .label-group h2 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: #fff; }
+        .tag { 
+            display: inline-block; 
+            font-size: 10px; 
+            font-weight: 800; 
+            padding: 4px 10px; 
+            border-radius: 4px; 
+            text-transform: uppercase; 
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+        }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .stat-item {
+            background: #121218;
+            border: 1px solid var(--border-industrial);
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .stat-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; font-weight: 800; margin-bottom: 6px; }
+        .stat-value { font-size: 15px; font-weight: 600; color: #fff; font-family: ui-monospace, monospace; }
+
+        /* Simulation Box */
+        .sim-box {
+            background: #000;
+            border: 2px solid var(--border-industrial);
+            border-radius: 10px;
+            padding: 24px;
+        }
+
+        .sim-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .sim-header {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #1a1a1e;
-        }
-        .spec-val { color: #fff; font-weight: bold; }
-
-        #coord-panel {
-            position: absolute;
-            bottom: 15px;
-            left: 20px;
-            font-size: 10px;
-            color: #444;
-        }
-
-        .chip-tag {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
+            align-items: center;
             margin-bottom: 10px;
         }
 
-        .pulse { animation: pulse-anim 2s infinite; }
-        @keyframes pulse-anim {
-            0% { opacity: 0.3; }
-            50% { opacity: 0.7; }
-            100% { opacity: 0.3; }
+        .status-pill {
+            font-size: 10px;
+            font-weight: 800;
+            background: #1a1a24;
+            padding: 5px 12px;
+            border-radius: 100px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            border: 1px solid #333;
         }
+
+        .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--thermal-norm); box-shadow: 0 0 12px var(--thermal-norm); }
+        .streaming-active { background: var(--stream-active) !important; box-shadow: 0 0 15px var(--stream-active); }
+
+        .btn-action {
+            width: 100%;
+            background: #fff;
+            color: #000;
+            border: none;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-action:hover:not(:disabled) { background: #e2e2e7; transform: translateY(-1.5px); }
+        .btn-action:disabled { opacity: 0.15; cursor: not-allowed; }
+        .btn-action.stream-btn { background: #1a1a24; color: var(--stream-active); border: 1px solid var(--stream-active); }
+        .btn-action.stream-btn.active { background: var(--stream-active); color: #000; }
+
+        .telemetry-log {
+            margin-top: 20px;
+            font-family: ui-monospace, 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--stream-active);
+            line-height: 1.8;
+            height: 120px;
+            overflow-y: hidden;
+            background: #050508;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #111;
+        }
+
+        #coords {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: ui-monospace, monospace;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 5px;
+            border: 1px solid #222;
+        }
+
+        .thermal-active { fill: var(--thermal-hot) !important; filter: blur(30px); opacity: 0; transition: opacity 0.5s ease; }
+        
+        /* Streaming Animations */
+        @keyframes stream-pulse {
+            0% { opacity: 0.1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 0.1; }
+        }
+        .flow-line { stroke: var(--stream-active); stroke-width: 0.5; opacity: 0.2; }
     </style>
 </head>
-<body onmousemove="updateCoords(event)">
+<body onmousemove="updateMouseCoords(event)">
 
 <header>
-    <div style="font-weight: bold; color: #fff;">6G_FABRICATION_GALLERY v1.0</div>
-    <div id="clock">SYS_TIME: 2026.03.01_00:52:11</div>
+    <div class="header-title">
+        <span style="color: #3b82f6;">◆</span> 6G_FABRICATION_LAB // SILICON_PLOT
+    </div>
+    <div class="chip-nav">
+        <div id="nav-ru" class="nav-item active" onclick="switchSilicon('ru')">RU_SoC</div>
+        <div id="nav-du" class="nav-item" onclick="switchSilicon('du')">DU_Compute</div>
+        <div id="nav-cu" class="nav-item" onclick="switchSilicon('cu')">CU_AI-RAN</div>
+        <div id="nav-io" class="nav-item" onclick="switchSilicon('io')">Optical_IO</div>
+    </div>
+    <div class="sys-info">
+        <span>STRATA: M12_BEOL</span>
+        <span style="color: #fff;">MODE: SEM_LITHOGRAPHY</span>
+        <span id="sys-clock">2026-03-01 16:15:00</span>
+    </div>
 </header>
 
-<div class="nav-tabs">
-    <div class="tab active" onclick="switchChip('ru')">Radio Unit (RU) SoC</div>
-    <div class="tab" onclick="switchChip('du')">Distributed Unit (DU)</div>
-    <div class="tab" onclick="switchChip('cu')">Central Unit (CU/AI)</div>
-    <div class="tab" onclick="switchChip('io')">Transport/Fronthaul</div>
-</div>
-
-<div class="main-view">
-    <div class="die-canvas" id="viewport">
-        <div id="coord-panel">DIE_X: 0.00 | DIE_Y: 0.00</div>
-        <svg viewBox="0 0 1000 800" id="chip-svg">
+<main>
+    <div class="viewport">
+        <div id="coords">DIE_LOC [X: 0.0000 | Y: 0.0000]</div>
+        <svg id="die-plot" viewBox="0 0 1000 800">
             <defs>
-                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0f0f12" stroke-width="0.5"/>
+                <pattern id="metalDensity" width="12" height="12" patternUnits="userSpaceOnUse">
+                    <circle cx="3" cy="3" r="1" fill="#333345"/>
                 </pattern>
+                <filter id="thermalGlow">
+                    <feGaussianBlur stdDeviation="6" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
             </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-            <g id="chip-layer"></g>
+
+            <!-- Wafer Background -->
+            <rect x="0" y="0" width="1000" height="800" fill="#000" />
+            
+            <!-- Wafer Scribe -->
+            <rect x="50" y="25" width="900" height="750" fill="none" stroke="#222" stroke-width="2" stroke-dasharray="15 10"/>
+            
+            <!-- Die Base -->
+            <rect id="substrate-rect" x="100" y="50" width="800" height="700" rx="8" class="substrate" />
+            <rect x="100" y="50" width="800" height="700" class="metal-fill" pointer-events="none" />
+
+            <!-- Lithographic Marks -->
+            <g stroke="#666" stroke-width="1.5" fill="none" pointer-events="none">
+                <circle cx="115" cy="65" r="12"/> <path d="M100 65 h30 M115 50 v30"/>
+                <circle cx="885" cy="65" r="12"/> <path d="M870 65 h30 M885 50 v30"/>
+                <circle cx="115" cy="735" r="12"/> <path d="M100 735 h30 M115 720 v30"/>
+                <circle cx="885" cy="735" r="12"/> <path d="M870 735 h30 M885 720 v30"/>
+            </g>
+
+            <!-- IO Pads -->
+            <g id="io-ring-group"></g>
+
+            <!-- Logic Partitions -->
+            <g id="logic-layers"></g>
+            
+            <!-- Thermal & Stream Layers -->
+            <g id="thermal-overlay" pointer-events="none"></g>
+            <g id="stream-overlay" pointer-events="none"></g>
         </svg>
     </div>
 
-    <div class="inspector" id="inspector">
-        <div id="chip-meta">
-            <div id="chip-type-tag" class="chip-tag" style="background: var(--accent-ru); color: #000;">RADIO_PHY</div>
-            <h2 id="chip-name" style="margin: 0; color: #fff; font-size: 18px;">BroadPeak BCM85021</h2>
-            <p id="chip-desc" style="color: #666; line-height: 1.4; margin: 10px 0;">5nm CMOS Direct-RF Digital Front End.</p>
+    <aside class="inspector">
+        <div class="panel-section">
+            <div id="comp-tag" class="tag" style="background: var(--accent-ru); color: #000;">Radio PHY</div>
+            <div class="label-group">
+                <h2 id="comp-name">BroadPeak™ BCM85021</h2>
+                <p id="comp-desc" style="color: var(--text-secondary); font-size: 12px; line-height: 1.6; margin-top: 14px;">
+                    Broadcom's 5nm DFE flagship. Direct-RF sampling for sub-THz massive MIMO.
+                </p>
+            </div>
+            
+            <div class="stat-grid" id="spec-grid"></div>
         </div>
 
-        <div style="border-top: 1px solid #222; padding-top: 15px;">
-            <div style="color: #444; margin-bottom: 10px;">LITHOGRAPHY_STATS</div>
-            <div id="spec-list"></div>
-        </div>
+        <div class="panel-section">
+            <div class="sim-box">
+                <div class="sim-header">
+                    <span style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #fff;">COMPUTE_TELEMETRY</span>
+                    <div class="status-pill">
+                        <div id="sim-dot" class="pulse-dot"></div>
+                        <span id="sim-status-text">IDLE</span>
+                    </div>
+                </div>
 
-        <div style="margin-top: auto;">
-            <div style="color: #333; font-size: 9px;">CAD_LAYER_VIEW: METAL_12_TOP</div>
-            <div style="height: 4px; background: #111; margin-top: 5px;">
-                <div style="width: 75%; height: 100%; background: #444;"></div>
+                <div class="sim-controls">
+                    <button id="btn-stress" class="btn-action" onclick="toggleStressTest()" disabled>
+                        <span>⚡</span> Run Stress Test
+                    </button>
+                    <button id="btn-stream" class="btn-action stream-btn" onclick="toggleStreaming()" disabled>
+                        <span>◆</span> Live Data Stream
+                    </button>
+                </div>
+
+                <div class="telemetry-log" id="tel-log">
+                    > AW_WAITING_FOR_PARTITION...<br>
+                    > NODE: 5NM_EUV_STABLE<br>
+                    > BUS_COHERENCY: READY
+                </div>
             </div>
         </div>
-    </div>
-</div>
+
+        <div class="panel-section" style="flex: 1;">
+            <div style="font-size: 10px; font-weight: 800; color: #444; text-transform: uppercase; letter-spacing: 1px;">Fabrication Metrics</div>
+            <div style="margin-top: 18px; font-size: 12px; line-height: 2.2; color: var(--text-secondary);">
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a24; padding-bottom: 6px;"><span>Gate Density</span><span id="gate-dens" style="color: #fff; font-weight: 700;">142M / mm²</span></div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a24; padding-bottom: 6px; margin-top: 8px;"><span>IR Drop</span><span id="ir-drop" style="color: #fff; font-weight: 700;">12.4 mV</span></div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #1a1a24; padding-bottom: 6px; margin-top: 8px;"><span>PDN Efficiency</span><span id="pdn-eff" style="color: #fff; font-weight: 700;">94.2%</span></div>
+            </div>
+        </div>
+    </aside>
+</main>
 
 <script>
-    const chips = {
+    const siliconHierarchy = {
         ru: {
-            name: "BroadPeak BCM85021",
-            tag: "RADIO_PHY",
-            tagColor: "var(--accent-ru)",
-            desc: "The primary 6G Radio Unit SoC. Integrated high-speed data converters with Neural DPD logic.",
-            specs: { "Node": "5nm FinFET", "ADC/DAC": "19.6 GS/s", "Die Size": "142 mm²", "TDP": "18W" },
-            layout: [
-                {id: 'afe_l', x: 150, y: 100, w: 100, h: 400, label: 'ADC_BANK_L'},
-                {id: 'afe_r', x: 750, y: 100, w: 100, h: 400, label: 'DAC_BANK_R'},
-                {id: 'logic', x: 260, y: 100, w: 480, h: 300, label: 'DFE_LOGIC_CORE'},
-                {id: 'neural', x: 300, y: 120, w: 400, h: 100, label: 'NEURAL_DPD_CLUSTER', highlight: true},
-                {id: 'io', x: 150, y: 510, w: 700, h: 100, label: 'JESD204C_INTERFACE'}
+            name: "BroadPeak™ BCM85021",
+            tag: "Radio PHY",
+            color: "var(--accent-ru)",
+            desc: "The 6G interface SoC. Direct-RF sampling at 19.6 GS/s with neural-accelerated DPD linearization.",
+            specs: { "Process": "5nm FinFET", "Sampling": "19.6 GS/s", "TDP": "18.4 W", "Isolation": ">82 dB" },
+            metrics: { density: "142M", ir: "12.4 mV", eff: "94.2%" },
+            blocks: [
+                {id: 'adc_array', x: 130, y: 100, w: 120, h: 420, label: 'ADC_BANK'},
+                {id: 'dfe_core', x: 280, y: 100, w: 440, h: 320, label: 'DFE_ENGINE', heat: true},
+                {id: 'neural', x: 320, y: 120, w: 360, h: 100, label: 'NEURAL_DPD'},
+                {id: 'dac_array', x: 750, y: 100, w: 120, h: 420, label: 'DAC_BANK'},
+                {id: 'jesd', x: 130, y: 540, w: 740, h: 100, label: 'Fronthaul_PHY'}
             ]
         },
         du: {
-            name: "Xeon 6 vRAN SoC",
-            tag: "COMPUTE_DU",
-            tagColor: "var(--accent-du)",
-            desc: "L1/L2 Physical layer processing. Features hardware-integrated AMX and vRAN Boost acceleration.",
-            specs: { "Node": "Intel 3", "Cores": "72-Core P-Core", "AI Ops": "AMX FP16", "Memory": "8-Ch DDR5" },
-            layout: [
-                {id: 'cores', x: 200, y: 100, w: 600, h: 400, label: '72_CORE_COMPUTE_GRID'},
-                {id: 'amx', x: 250, y: 150, w: 500, h: 100, label: 'AMX_AI_ACCELERATORS', highlight: true},
-                {id: 'boost', x: 200, y: 510, w: 300, h: 150, label: 'vRAN_BOOST_LDPC'},
-                {id: 'mem', x: 510, y: 510, w: 290, h: 150, label: 'MEMORY_CONTROLLERS'}
+            name: "Xeon® 6 vRAN Pro",
+            tag: "Compute DU",
+            color: "var(--accent-du)",
+            desc: "Software-defined baseband processor. Integrated AMX for real-time 6G LDPC decoding.",
+            specs: { "Process": "Intel 3", "Cores": "72-Core", "L3": "256 MB", "AI": "AMX_BF16" },
+            metrics: { density: "188M", ir: "28.1 mV", eff: "89.6%" },
+            blocks: [
+                {id: 'compute', x: 150, y: 80, w: 700, h: 450, label: '72_CORE_GRID', heat: true},
+                {id: 'amx', x: 220, y: 120, w: 560, h: 140, label: 'AMX_ACCELERATORS'},
+                {id: 'boost', x: 150, y: 550, w: 340, h: 120, label: 'vRAN_BOOST'},
+                {id: 'mem', x: 510, y: 550, w: 340, h: 120, label: 'DDR5_PHY'}
             ]
         },
         cu: {
-            name: "NVIDIA Aerial GH200",
-            tag: "AI_CU_EDGE",
-            tagColor: "var(--accent-cu)",
-            desc: "Combined CPU/GPU architecture for the Centralized Unit. Runs RIC (RAN Intelligent Controller) and L3 stacks.",
-            specs: { "Node": "4N TSMC", "Memory": "96GB HBM3", "BW": "4 TB/s", "Role": "AI-RAN Control" },
-            layout: [
-                {id: 'gpu', x: 150, y: 80, w: 500, h: 500, label: 'TURING_AI_MATRIX'},
-                {id: 'hbm', x: 660, y: 80, w: 100, h: 500, label: 'HBM3_STACKS', highlight: true},
-                {id: 'cpu', x: 150, y: 600, w: 610, h: 120, label: 'GRACE_ARM_CORES'}
+            name: "Aerial™ GH200 Blackwell",
+            tag: "AI-RAN / CU",
+            color: "var(--accent-cu)",
+            desc: "Heterogeneous AI computing platform. Powers the near-real-time RAN Intelligent Controller.",
+            specs: { "Process": "4N TSMC", "GPU": "Blackwell", "Memory": "HBM3e", "NVLink": "900 GB/s" },
+            metrics: { density: "210M", ir: "42.0 mV", eff: "84.1%" },
+            blocks: [
+                {id: 'gpu', x: 150, y: 80, w: 550, h: 500, label: 'AI_MATRIX_DIE', heat: true},
+                {id: 'hbm', x: 720, y: 80, w: 130, h: 500, label: 'HBM3e_STACK'},
+                {id: 'cpu', x: 150, y: 600, w: 700, h: 120, label: 'ARM_GRACE_CORES'}
             ]
         },
         io: {
-            name: "Marvell Teralynx 10",
-            tag: "TRANSPORT_PHY",
-            tagColor: "var(--accent-io)",
-            desc: "Low-latency switching fabric for 6G fronthaul. Handles 800G optical links with PAM4 DSP.",
-            specs: { "Node": "5nm", "Throughput": "51.2 Tbps", "Latency": "<500ns", "Phy": "PAM4 112G" },
-            layout: [
-                {id: 'switch', x: 250, y: 150, w: 500, h: 400, label: 'SWITCH_FABRIC_CORE'},
-                {id: 'serdes_l', x: 100, y: 100, w: 140, h: 600, label: 'PAM4_SERDES_L'},
-                {id: 'serdes_r', x: 760, y: 100, w: 140, h: 600, label: 'PAM4_SERDES_R', highlight: true}
+            name: "Teralynx™ 10 Switch",
+            tag: "Transport PHY",
+            color: "var(--accent-io)",
+            desc: "Ultra-low latency packet switch fabric for 6G fronthaul. Sub-420ns switching latency.",
+            specs: { "Process": "5nm EUV", "Throughput": "51.2 Tbps", "Lanes": "800G Optic", "Jitter": "<10 ps" },
+            metrics: { density: "92M", ir: "18.2 mV", eff: "96.5%" },
+            blocks: [
+                {id: 'fabric', x: 280, y: 150, w: 440, h: 400, label: 'SWITCH_CORE', heat: true},
+                {id: 'phy_l', x: 120, y: 100, w: 140, h: 600, label: 'PAM4_DSP_L'},
+                {id: 'phy_r', x: 740, y: 100, w: 140, h: 600, label: 'PAM4_DSP_R'}
             ]
         }
     };
 
-    function updateCoords(e) {
-        const svg = document.getElementById('chip-svg');
-        const pt = svg.createSVGPoint();
-        pt.x = e.clientX;
-        pt.y = e.clientY;
-        const cursorPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-        document.getElementById('coord-panel').innerText = `DIE_X: ${(cursorPt.x / 10).toFixed(2)} | DIE_Y: ${(cursorPt.y / 10).toFixed(2)}`;
+    let selectedBlock = null;
+    let isStressTest = false;
+    let isStreaming = false;
+    let renderFrame = null;
+    let lastUpdate = 0;
+
+    function switchSilicon(key) {
+        stopSimulation();
+        const chip = siliconHierarchy[key];
+        selectedBlock = null;
+        
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`nav-${key}`).classList.add('active');
+
+        document.getElementById('comp-name').innerText = chip.name;
+        document.getElementById('comp-desc').innerText = chip.desc;
+        const tag = document.getElementById('comp-tag');
+        tag.innerText = chip.tag;
+        tag.style.background = chip.color;
+
+        const grid = document.getElementById('spec-grid');
+        grid.innerHTML = '';
+        for (const [k, v] of Object.entries(chip.specs)) {
+            grid.innerHTML += `<div class="stat-item"><div class="stat-label">${k}</div><div class="stat-value">${v}</div></div>`;
+        }
+        
+        document.getElementById('gate-dens').innerText = chip.metrics.density + " / mm²";
+        document.getElementById('ir-drop').innerText = chip.metrics.ir;
+        document.getElementById('pdn-eff').innerText = chip.metrics.eff;
+
+        renderDie(chip);
+        updateUI();
     }
 
-    function switchChip(key) {
-        // Tab styling
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        event.currentTarget.classList.add('active');
-
-        const chip = chips[key];
-        const layer = document.getElementById('chip-layer');
+    function renderDie(chip) {
+        const layer = document.getElementById('logic-layers');
         layer.innerHTML = '';
-
-        // Draw Die
-        const die = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        die.setAttribute("x", "100");
-        die.setAttribute("y", "50");
-        die.setAttribute("width", "800");
-        die.setAttribute("height", "700");
-        die.setAttribute("class", "die-rect");
-        layer.appendChild(die);
-
-        // Draw Pads
-        for(let i=110; i<890; i+=20) {
-            const padT = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            padT.setAttribute("x", i); padT.setAttribute("y", 52); padT.setAttribute("width", 8); padT.setAttribute("height", 8); padT.setAttribute("class", "io-bump");
-            layer.appendChild(padT);
-            const padB = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            padB.setAttribute("x", i); padB.setAttribute("y", 740); padB.setAttribute("width", 8); padB.setAttribute("height", 8); padB.setAttribute("class", "io-bump");
-            layer.appendChild(padB);
-        }
-
-        // Draw Blocks
-        chip.layout.forEach(b => {
+        
+        chip.blocks.forEach(b => {
             const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
             const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            rect.setAttribute("x", b.x);
-            rect.setAttribute("y", b.y);
-            rect.setAttribute("width", b.w);
-            rect.setAttribute("height", b.h);
-            rect.setAttribute("class", "block-rect" + (b.highlight ? " pulse" : ""));
-            if(b.highlight) rect.style.stroke = chip.tagColor;
-            
+            rect.setAttribute("x", b.x); rect.setAttribute("y", b.y); rect.setAttribute("width", b.w); rect.setAttribute("height", b.h);
+            rect.setAttribute("class", "logic-block");
+            rect.setAttribute("id", `block-${b.id}`);
+            rect.onclick = () => selectBlockHandler(b, chip.color);
+
             const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            txt.setAttribute("x", b.x + (b.w/2));
-            txt.setAttribute("y", b.y + (b.h/2));
-            txt.setAttribute("text-anchor", "middle");
-            txt.setAttribute("class", "label" + (b.highlight ? " active-label" : ""));
+            txt.setAttribute("x", b.x + (b.w/2)); txt.setAttribute("y", b.y + (b.h/2) + 5);
+            txt.setAttribute("text-anchor", "middle"); txt.setAttribute("fill", "#fff");
+            txt.setAttribute("font-size", "11"); txt.setAttribute("font-weight", "800");
+            txt.setAttribute("pointer-events", "none");
             txt.textContent = b.label;
 
-            g.appendChild(rect);
-            g.appendChild(txt);
+            g.appendChild(rect); g.appendChild(txt);
             layer.appendChild(g);
         });
 
-        // Update Inspector
-        document.getElementById('chip-name').innerText = chip.name;
-        document.getElementById('chip-desc').innerText = chip.desc;
-        const tag = document.getElementById('chip-type-tag');
-        tag.innerText = chip.tag;
-        tag.style.background = chip.tagColor;
-
-        const specs = document.getElementById('spec-list');
-        specs.innerHTML = '';
-        for(const [k, v] of Object.entries(chip.specs)) {
-            specs.innerHTML += `<div class="spec-row"><span style="color:#444">${k}</span><span class="spec-val">${v}</span></div>`;
+        const ring = document.getElementById('io-ring-group');
+        ring.innerHTML = '';
+        for(let i=110; i<890; i+=15) {
+            const rT = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rT.setAttribute("x", i); rT.setAttribute("y", 54); rT.setAttribute("width", 10); rT.setAttribute("height", 10); rT.classList.add('io-ring');
+            ring.appendChild(rT);
+            const rB = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rB.setAttribute("x", i); rB.setAttribute("y", 736); rB.setAttribute("width", 10); rB.setAttribute("height", 10); rB.classList.add('io-ring');
+            ring.appendChild(rB);
         }
     }
 
-    // Init
+    function selectBlockHandler(block, color) {
+        stopSimulation();
+        document.querySelectorAll('.logic-block').forEach(el => {
+            el.classList.remove('block-selected');
+            el.style.stroke = '#444458';
+        });
+        
+        const el = document.getElementById(`block-${block.id}`);
+        el.classList.add('block-selected');
+        el.style.stroke = color;
+        
+        selectedBlock = block;
+        updateUI();
+        logMessage(`> PARTITION_LOCK: ${block.label}`);
+    }
+
+    function updateUI() {
+        const canSim = !!selectedBlock;
+        document.getElementById('btn-stress').disabled = !canSim;
+        document.getElementById('btn-stream').disabled = !canSim;
+    }
+
+    function toggleStressTest() {
+        if (isStressTest) stopSimulation();
+        else startSimulation('STRESS');
+    }
+
+    function toggleStreaming() {
+        if (isStreaming) stopSimulation();
+        else startSimulation('STREAM');
+    }
+
+    function startSimulation(mode) {
+        stopSimulation();
+        if (mode === 'STRESS') {
+            isStressTest = true;
+            document.getElementById('btn-stress').style.background = "var(--thermal-hot)";
+            document.getElementById('btn-stress').style.color = "#fff";
+            document.getElementById('sim-status-text').innerText = "STRESS_TEST";
+            document.getElementById('sim-dot').style.background = "var(--thermal-hot)";
+        } else {
+            isStreaming = true;
+            document.getElementById('btn-stream').classList.add('active');
+            document.getElementById('sim-status-text').innerText = "STREAMING";
+            document.getElementById('sim-dot').classList.add('streaming-active');
+        }
+
+        renderSimulation();
+    }
+
+    function stopSimulation() {
+        isStressTest = false;
+        isStreaming = false;
+        if (renderFrame) cancelAnimationFrame(renderFrame);
+        
+        document.getElementById('btn-stress').style.background = "#fff";
+        document.getElementById('btn-stress').style.color = "#000";
+        document.getElementById('btn-stream').classList.remove('active');
+        document.getElementById('sim-status-text').innerText = "IDLE";
+        document.getElementById('sim-dot').style.background = "var(--thermal-norm)";
+        document.getElementById('sim-dot').classList.remove('streaming-active');
+        
+        document.getElementById('thermal-overlay').innerHTML = '';
+        document.getElementById('stream-overlay').innerHTML = '';
+        logMessage("> PROCESS_TERMINATED: NOMINAL");
+    }
+
+    function renderSimulation(timestamp) {
+        if (!selectedBlock) return;
+        
+        // Render Loop for Telemetry & Visuals
+        if (timestamp - lastUpdate > (isStressTest ? 150 : 60)) {
+            lastUpdate = timestamp;
+            const power = (Math.random() * (isStressTest ? 15 : 5) + 10).toFixed(2);
+            const addr = "0x" + Math.floor(Math.random() * 0xFFFFFF).toString(16).toUpperCase();
+            logMessage(`> ${isStressTest ? 'STRESS' : 'DATA'} | P:${power}W | INSTR:${addr}`);
+            
+            // Thermal Pulse
+            if (isStressTest && selectedBlock.heat) {
+                const thermal = document.getElementById('thermal-overlay');
+                thermal.innerHTML = '';
+                const h = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                h.setAttribute("x", selectedBlock.x); h.setAttribute("y", selectedBlock.y);
+                h.setAttribute("width", selectedBlock.w); h.setAttribute("height", selectedBlock.h);
+                h.classList.add('thermal-active');
+                h.style.opacity = (Math.random() * 0.4 + 0.3);
+                thermal.appendChild(h);
+            }
+
+            // Stream Visuals
+            if (isStreaming) {
+                const stream = document.getElementById('stream-overlay');
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                const x1 = Math.random() * 800 + 100;
+                line.setAttribute("x1", x1); line.setAttribute("y1", 50);
+                line.setAttribute("x2", x1); line.setAttribute("y2", 750);
+                line.setAttribute("class", "flow-line");
+                line.style.animation = "stream-pulse 0.5s ease-out forwards";
+                stream.appendChild(line);
+                if (stream.children.length > 20) stream.removeChild(stream.firstChild);
+            }
+        }
+
+        renderFrame = requestAnimationFrame(renderSimulation);
+    }
+
+    function logMessage(msg) {
+        const log = document.getElementById('tel-log');
+        log.innerHTML = msg + "<br>" + log.innerHTML.split("<br>").slice(0, 5).join("<br>");
+    }
+
+    function updateMouseCoords(e) {
+        const svg = document.getElementById('die-plot');
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const cursorPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+        document.getElementById('coords').innerText = `DIE_LOC [X: ${(cursorPt.x / 10).toFixed(4)} | Y: ${(cursorPt.y / 10).toFixed(4)}]`;
+    }
+
     window.onload = () => {
-        switchChip('ru');
+        switchSilicon('ru');
         setInterval(() => {
-            const now = new Date();
-            document.getElementById('clock').innerText = `SYS_TIME: ${now.toISOString().replace('T','_').split('.')[0]}`;
+            const d = new Date();
+            document.getElementById('sys-clock').innerText = d.toISOString().replace('T', ' ').split('.')[0];
         }, 1000);
     };
 </script>
-
 </body>
 </html>
